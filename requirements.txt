@@ -1,0 +1,42 @@
+# =============================================================================
+# Top-level requirements — installed into the host .venv for development.
+# This is the SUPERSET of every service's needs, so the venv can run any script
+# (genre_ordering.py, the training notebook, and any service while iterating).
+#
+# Each service folder has its own slim requirements.txt; the Dockerfiles install
+# from those, not from this file. This file is the development workbench.
+#
+# Pinning policy: `~=X.Y` means ">=X.Y, <X+1.0" (compatible release). It locks
+# the major version (where breaking changes live) while allowing patch/minor
+# updates. The libraries most sensitive to version drift are flagged below.
+# =============================================================================
+
+# --- Streaming / Kafka client -------------------------------------------------
+# The C-backed client. Major version 2.x is current and stable.
+confluent-kafka~=2.14
+
+# --- ML training & inference --------------------------------------------------
+# scikit-learn: model + scaler. The pickled model MUST be loaded by the SAME
+# minor version it was trained with, or joblib.load may warn/break. Keep this
+# pin identical in consumer/requirements.txt. <-- most important pin to match.
+scikit-learn~=1.5
+imbalanced-learn~=0.13      # SMOTE; depends on a compatible scikit-learn
+joblib~=1.4                 # model/scaler serialization
+
+# --- Drift detection ----------------------------------------------------------
+river~=0.22                 # ADWIN online drift detector
+scipy~=1.13                 # ks_2samp for the KS test
+
+# --- Experiment tracking ------------------------------------------------------
+mlflow~=2.16                # offline metric logging during training only
+
+# --- Data handling ------------------------------------------------------------
+pandas~=2.2
+numpy~=1.26                 # pinned <2.0 for broad compatibility with the above
+
+# --- Dashboard ----------------------------------------------------------------
+streamlit~=1.39
+plotly~=5.24
+
+# --- Dev convenience (optional, host-only) ------------------------------------
+jupyter~=1.1                # to run train_baseline.ipynb

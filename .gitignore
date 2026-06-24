@@ -1,0 +1,26 @@
+# --- Python ------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ipynb_checkpoints/
+
+# --- Virtual environment (recreate from requirements.txt) --------------------
+.venv/
+venv/
+
+# --- Generated data (recreate by running data/genre_ordering.py) -------------
+data/dataset.csv
+data/genre_ordered_tracks.csv
+
+# --- Generated model artifacts (recreate by running the training notebook) ---
+models/*.joblib
+models/training_metadata.json
+
+# --- MLflow local tracking store ---------------------------------------------
+mlruns/
+mlflow.db
+
+# --- OS / editor cruft -------------------------------------------------------
+.DS_Store
+.vscode/
+.idea/
