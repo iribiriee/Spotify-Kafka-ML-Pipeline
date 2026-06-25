@@ -1,0 +1,99 @@
+# =============================================================================
+# docker-compose.yml  —  Step 1: messaging backbone only.
+#
+# Services here:
+#   kafka       - single broker in KRaft mode (no Zookeeper)
+#   kafka-ui    - web UI at http://localhost:8080 for inspecting topics/messages
+#   init-topics - runs once, creates the 3 topics, then exits
+#
+# Application services (producer, consumer, dashboard) get appended in later
+# steps. Start this with:  docker compose up -d
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # Kafka broker, KRaft combined mode (acts as both broker and controller).
+  # Combined mode is for local/dev use, which is exactly our case.
+  # ---------------------------------------------------------------------------
+  kafka:
+    image: confluentinc/cp-kafka:7.8.0
+    hostname: kafka
+    container_name: kafka
+    ports:
+      # host:container — exposes the host-facing listener so your .venv scripts
+      # can reach the broker at localhost:9092.
+      - "9092:9092"
+    environment:
+      # --- KRaft identity & roles ---
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:29093"
+      CLUSTER_ID: "${CLUSTER_ID}"
+
+      # --- The dual-listener setup (see the diagram) ---
+      # Three named listeners: one for inter-broker/controller traffic,
+      # one for containers (INTERNAL), one for the host (HOST).
+      KAFKA_LISTENERS: "CONTROLLER://kafka:29093,INTERNAL://kafka:29092,HOST://0.0.0.0:9092"
+      KAFKA_ADVERTISED_LISTENERS: "INTERNAL://kafka:29092,HOST://localhost:9092"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,HOST:PLAINTEXT"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "INTERNAL"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+
+      # --- Single-broker replication settings (must be 1; we have one broker) ---
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+
+      # We create topics explicitly (init-topics), so disable auto-creation:
+      # this surfaces typos as errors instead of silently making junk topics.
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+    healthcheck:
+      # Broker is "healthy" once it answers an admin API call. Other services
+      # wait on this so they don't start before Kafka is ready.
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+
+  # ---------------------------------------------------------------------------
+  # Kafka UI — visual debugging at http://localhost:8080
+  # ---------------------------------------------------------------------------
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: "spotify-pipeline"
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "kafka:29092"
+      DYNAMIC_CONFIG_ENABLED: "true"
+
+  # ---------------------------------------------------------------------------
+  # init-topics — a throwaway container that creates our 3 topics, then exits.
+  # Runs after Kafka is healthy. Idempotent: --if-not-exists won't error on
+  # re-runs, so `docker compose up` is always safe.
+  # ---------------------------------------------------------------------------
+  init-topics:
+    image: confluentinc/cp-kafka:7.8.0
+    container_name: init-topics
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "/scripts/create_topics.sh"]
+    environment:
+      KAFKA_BOOTSTRAP_INTERNAL: "${KAFKA_BOOTSTRAP_INTERNAL}"
+      TOPIC_RAW_TRACKS: "${TOPIC_RAW_TRACKS}"
+      TOPIC_PREDICTIONS: "${TOPIC_PREDICTIONS}"
+      TOPIC_DRIFT_ALERTS: "${TOPIC_DRIFT_ALERTS}"
+    volumes:
+      - ./scripts:/scripts:ro
+
+volumes:
+  kafka-data:
