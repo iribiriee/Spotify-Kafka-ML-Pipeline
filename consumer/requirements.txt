@@ -1,0 +1,9 @@
+# Inference needs scikit-learn (load model) + joblib; pin scikit-learn to the
+# SAME minor version the model was trained with, or joblib.load may warn/break.
+confluent-kafka~=2.14
+scikit-learn~=1.5
+joblib~=1.4
+river~=0.22
+scipy~=1.13
+pandas~=2.2
+numpy~=1.26

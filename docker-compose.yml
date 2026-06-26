@@ -95,5 +95,65 @@ services:
     volumes:
       - ./scripts:/scripts:ro
 
+  # ---------------------------------------------------------------------------
+  # producer — streams the genre-ordered CSV into raw-tracks.
+  # ---------------------------------------------------------------------------
+  producer:
+    build:
+      context: .                 # repo root, so the Dockerfile can copy shared/
+      dockerfile: producer/Dockerfile
+    container_name: producer
+    depends_on:
+      kafka:
+        condition: service_healthy
+      init-topics:
+        condition: service_completed_successfully
+    environment:
+      KAFKA_BOOTSTRAP_HOST: "${KAFKA_BOOTSTRAP_INTERNAL}"   # use kafka:29092 in-cluster
+      PRODUCER_DELAY_SECONDS: "${PRODUCER_DELAY_SECONDS}"
+      PRODUCER_LOOP_FOREVER: "${PRODUCER_LOOP_FOREVER:-false}"
+    volumes:
+      - ./data:/app/data:ro      # read the CSV (read-only)
+
+  # ---------------------------------------------------------------------------
+  # consumer — runs inference + drift monitor as threads (see consumer/main.py).
+  # ---------------------------------------------------------------------------
+  consumer:
+    build:
+      context: .
+      dockerfile: consumer/Dockerfile
+    container_name: consumer
+    depends_on:
+      kafka:
+        condition: service_healthy
+      init-topics:
+        condition: service_completed_successfully
+    environment:
+      KAFKA_BOOTSTRAP_HOST: "${KAFKA_BOOTSTRAP_INTERNAL}"
+      DRIFT_WINDOW_SIZE: "${DRIFT_WINDOW_SIZE}"
+      DRIFT_KS_PVALUE: "${DRIFT_KS_PVALUE}"
+    volumes:
+      - ./data:/app/data:ro      # phase-1 reference for KS
+      - ./models:/app/models     # read model bundle; retrainer will write here
+
+  # ---------------------------------------------------------------------------
+  # dashboard — Flask UI at http://localhost:5000
+  # ---------------------------------------------------------------------------
+  dashboard:
+    build:
+      context: .
+      dockerfile: dashboard/Dockerfile
+    container_name: dashboard
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "5000:5000"
+    environment:
+      KAFKA_BOOTSTRAP_HOST: "${KAFKA_BOOTSTRAP_INTERNAL}"
+      DASHBOARD_PORT: "5000"
+    volumes:
+      - ./data:/app/data:ro      # phase-1 reference CSV
+
 volumes:
   kafka-data:
