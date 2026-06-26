@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Drift Monitor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600&family=Roboto+Condensed:wght@400;500&display=swap" rel="stylesheet" />
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+<style>
+  :root{
+    --bg:#FAEBD7; --accent:#A52A2A; --ink:#000000;
+    --panel:#FAEBD7; --line:#A52A2A;
+    --font-head:'Oswald',sans-serif; --font-num:'Roboto Condensed',sans-serif;
+  }
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  body{ background:var(--bg); color:var(--ink); font-family:var(--font-num);
+        padding:24px; line-height:1.4; }
+  .wrap{ max-width:1100px; margin:0 auto; }
+  /* header */
+  header{ display:flex; align-items:baseline; justify-content:space-between;
+          border-bottom:2px solid var(--line); padding-bottom:12px; margin-bottom:18px; }
+  h1{ font-family:var(--font-head); color:var(--accent); font-weight:600;
+      font-size:26px; text-transform:uppercase; letter-spacing:.03em; }
+  .subtitle{ font-family:var(--font-num); color:var(--ink); font-size:13px; }
+  .status{ font-family:var(--font-num); font-size:13px; display:flex; align-items:center; gap:7px; }
+  .dot{ width:9px; height:9px; border-radius:50%; background:var(--accent);
+        display:inline-block; }
+  /* metric cards */
+  .cards{ display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:16px; }
+  .card{ background:var(--panel); border:1px solid var(--accent); border-radius:3px; padding:12px 14px; }
+  .card.alarm{ background:var(--accent); }
+  .card .label{ font-family:var(--font-head); color:var(--accent); font-size:13px;
+                text-transform:uppercase; letter-spacing:.02em; }
+  .card.alarm .label{ color:var(--bg); }
+  .card .value{ font-family:var(--font-num); color:var(--ink); font-size:28px; font-weight:500; }
+  .card.alarm .value{ color:var(--bg); }
+  /* panels */
+  .panel{ background:var(--panel); border:1px solid var(--accent); border-radius:3px;
+          padding:14px 16px; margin-bottom:14px; }
+  .panel h2{ font-family:var(--font-head); color:var(--accent); font-weight:500;
+             font-size:17px; }
+  .panel .note{ font-family:var(--font-num); color:var(--ink); font-size:12px; margin-bottom:8px; }
+  .chart{ width:100%; height:240px; }
+  /* alerts log */
+  .log{ max-height:240px; overflow-y:auto; }
+  .log table{ width:100%; border-collapse:collapse; font-family:var(--font-num); font-size:13px; }
+  .log th{ font-family:var(--font-head); color:var(--accent); text-align:left;
+           text-transform:uppercase; font-size:12px; letter-spacing:.02em;
+           border-bottom:1px solid var(--accent); padding:6px 8px; position:sticky; top:0; background:var(--bg); }
+  .log td{ color:var(--ink); padding:5px 8px; border-bottom:1px solid rgba(165,42,42,.2); }
+  .log .det{ font-family:var(--font-head); color:var(--accent); text-transform:uppercase; font-size:12px; }
+  .empty{ color:var(--ink); font-size:13px; padding:12px 4px; opacity:.7; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Drift Monitor</h1>
+      <div class="subtitle" id="model-line">Spotify Popularity</div>
+    </div>
+    <div class="status"><span class="dot"></span><span id="status">Connecting&hellip;</span></div>
+  </header>
+
+  <div class="cards">
+    <div class="card"><div class="label">Accuracy</div><div class="value" id="m-acc">&mdash;</div></div>
+    <div class="card"><div class="label">Processed</div><div class="value" id="m-proc">&mdash;</div></div>
+    <div class="card"><div class="label">Phase</div><div class="value" id="m-phase">&mdash;</div></div>
+    <div class="card alarm"><div class="label">Drift Alerts</div><div class="value" id="m-alerts">&mdash;</div></div>
+  </div>
+
+  <div class="panel">
+    <h2>Rolling Accuracy</h2>
+    <div class="note">Brown lines mark drift alerts &middot; window = last 200 predictions</div>
+    <div class="chart" id="acc-chart"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Feature Distribution Shift</h2>
+    <div class="note" id="feat-note">Reference vs current window</div>
+    <div class="chart" id="feat-chart"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Drift Alerts Log</h2>
+    <div class="note">Most recent first</div>
+    <div class="log">
+      <table>
+        <thead><tr><th>Detector</th><th>Row</th><th>Phase</th><th>Feature</th><th>Statistic</th></tr></thead>
+        <tbody id="log-body"><tr><td colspan="5" class="empty">Waiting for alerts&hellip;</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+  const ACCENT = '#A52A2A', INK = '#000000', BG = '#FAEBD7';
+  const FONT = 'Roboto Condensed, sans-serif';
+
+  // Shared Plotly layout bits so both charts match the design.
+  function baseLayout(extra){
+    return Object.assign({
+      paper_bgcolor: BG, plot_bgcolor: BG,
+      font: { family: FONT, color: INK, size: 12 },
+      margin: { l: 44, r: 14, t: 10, b: 34 },
+      showlegend: true,
+      legend: { orientation: 'h', y: 1.12, x: 0, font: { family: FONT } },
+    }, extra || {});
+  }
+  const CONFIG = { displayModeBar: false, responsive: true };
+
+  // Build histogram bins from an array (simple equal-width bins).
+  function histogram(values, bins, lo, hi){
+    const counts = new Array(bins).fill(0);
+    const w = (hi - lo) / bins;
+    for(const v of values){
+      let idx = Math.floor((v - lo) / w);
+      if(idx < 0) idx = 0; if(idx >= bins) idx = bins - 1;
+      counts[idx]++;
+    }
+    const centers = counts.map((_, i) => +(lo + w * (i + 0.5)).toFixed(3));
+    // normalize to density so two windows of different size compare fairly
+    const total = values.length || 1;
+    const dens = counts.map(c => +(c / total).toFixed(4));
+    return { centers, dens };
+  }
+
+  function drawAccuracy(state){
+    const xs = state.acc_series.map(p => p[0]);
+    const ys = state.acc_series.map(p => p[1]);
+    const traces = [{
+      x: xs, y: ys, mode: 'lines', name: 'accuracy',
+      line: { color: INK, width: 2 }, hovertemplate: 'row %{x}<br>%{y}%<extra></extra>'
+    }];
+    // Vertical brown markers at each alert row.
+    const shapes = (state.alert_rows || []).map(r => ({
+      type: 'line', x0: r, x1: r, yref: 'paper', y0: 0, y1: 1,
+      line: { color: ACCENT, width: 1, dash: 'dash' }
+    }));
+    const layout = baseLayout({
+      shapes,
+      xaxis: { title: 'stream row', gridcolor: 'rgba(165,42,42,.15)', zeroline: false },
+      yaxis: { title: 'accuracy %', range: [0, 100], gridcolor: 'rgba(165,42,42,.15)', zeroline: false },
+    });
+    Plotly.react('acc-chart', traces, layout, CONFIG);
+  }
+
+  function drawFeature(state){
+    const ref = state.reference || [];
+    const cur = state.feature_window || [];
+    const all = ref.concat(cur);
+    const lo = all.length ? Math.min(...all) : 0;
+    const hi = all.length ? Math.max(...all) : 1;
+    const bins = 28;
+    const hr = histogram(ref, bins, lo, hi);
+    const hc = histogram(cur, bins, lo, hi);
+    const traces = [
+      { x: hr.centers, y: hr.dens, type: 'bar', name: 'phase-1 reference',
+        marker: { color: INK, opacity: 0.45 } },
+      { x: hc.centers, y: hc.dens, type: 'bar', name: 'current window',
+        marker: { color: ACCENT, opacity: 0.65 } },
+    ];
+    const layout = baseLayout({
+      barmode: 'overlay', bargap: 0.02,
+      xaxis: { title: state.feature_name || 'feature', gridcolor: 'rgba(165,42,42,.15)', zeroline: false },
+      yaxis: { title: 'density', gridcolor: 'rgba(165,42,42,.15)', zeroline: false },
+    });
+    Plotly.react('feat-chart', traces, layout, CONFIG);
+    const ks = state.ks_stat == null ? '—' : state.ks_stat.toFixed(3);
+    document.getElementById('feat-note').textContent =
+      `${state.feature_name} · reference vs current window · live KS = ${ks}`;
+  }
+
+  function drawLog(state){
+    const body = document.getElementById('log-body');
+    const alerts = state.alerts || [];
+    if(!alerts.length){
+      body.innerHTML = '<tr><td colspan="5" class="empty">Waiting for alerts&hellip;</td></tr>';
+      return;
+    }
+    body.innerHTML = alerts.map(a => {
+      const stat = a.statistic == null ? '—' : Number(a.statistic).toFixed(3);
+      const feat = a.feature || '—';
+      return `<tr><td class="det">${a.detector}</td><td>${a.row_index}</td>`
+           + `<td>${a.phase}</td><td>${feat}</td><td>${stat}</td></tr>`;
+    }).join('');
+  }
+
+  function setCards(state){
+    document.getElementById('m-acc').textContent = state.accuracy.toFixed(1) + '%';
+    document.getElementById('m-proc').textContent = state.processed.toLocaleString();
+    document.getElementById('m-phase').textContent = state.current_phase || '—';
+    document.getElementById('m-alerts').textContent = state.alert_count.toLocaleString();
+    document.getElementById('status').textContent = 'Live · row ' + state.current_row.toLocaleString();
+  }
+
+  async function tick(){
+    try{
+      const res = await fetch('/api/state');
+      const state = await res.json();
+      setCards(state);
+      drawAccuracy(state);
+      drawFeature(state);
+      drawLog(state);
+    }catch(err){
+      document.getElementById('status').textContent = 'Disconnected';
+    }
+  }
+  tick();
+  setInterval(tick, 2000);
+</script>
+</body>
+</html>
