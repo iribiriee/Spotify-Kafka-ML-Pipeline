@@ -133,7 +133,7 @@ services:
       DRIFT_WINDOW_SIZE: "${DRIFT_WINDOW_SIZE}"
       DRIFT_KS_PVALUE: "${DRIFT_KS_PVALUE}"
     volumes:
-      - ./data:/app/data:ro      # phase-1 reference for KS
+      - ./data:/app/data         # phase-1 reference (read) + writes the buffer
       - ./models:/app/models     # read model bundle; retrainer will write here
 
   # ---------------------------------------------------------------------------
@@ -154,6 +154,27 @@ services:
       DASHBOARD_PORT: "5000"
     volumes:
       - ./data:/app/data:ro      # phase-1 reference CSV
+
+  # ---------------------------------------------------------------------------
+  # retrainer — closes the loop: hears ADWIN drift, retrains, publishes new model.
+  # ---------------------------------------------------------------------------
+  retrainer:
+    build:
+      context: .
+      dockerfile: retrainer/Dockerfile
+    container_name: retrainer
+    depends_on:
+      kafka:
+        condition: service_healthy
+      init-topics:
+        condition: service_completed_successfully
+    environment:
+      KAFKA_BOOTSTRAP_HOST: "${KAFKA_BOOTSTRAP_INTERNAL}"
+      RETRAIN_DELAY_ROWS: "${RETRAIN_DELAY_ROWS:-500}"
+      RETRAIN_COOLDOWN_ROWS: "${RETRAIN_COOLDOWN_ROWS:-1500}"
+    volumes:
+      - ./data:/app/data           # read the buffer (read-write so it can read it)
+      - ./models:/app/models       # write new model versions
 
 volumes:
   kafka-data:

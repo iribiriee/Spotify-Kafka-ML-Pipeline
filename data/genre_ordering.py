@@ -6,8 +6,8 @@ the input the producer streams and the training notebook learns from.
 
 What it does, and why:
   1. Ensures the raw dataset exists (auto-download via download_dataset.py).
-  2. Keeps only the 9 genres that make up our 3 drift phases. This shrinks
-     114k -> ~9k rows of *clean, meaningful* drift instead of 114 muddled genres.
+  2. Keeps only the 12 genres that make up our 3 drift phases. This shrinks
+     114k -> ~12k rows of *clean, meaningful* drift instead of 114 muddled genres.
   3. Tags each row with genre_phase (1, 2, or 3).
   4. Shuffles WITHIN each phase, then concatenates phases in order. This is the
      key trick: order ACROSS phases is fixed (so drift happens at known row
@@ -23,10 +23,13 @@ import pandas as pd
 from download_dataset import ensure_dataset
 
 # --- The three drift phases. Each is a list of genres present in the dataset. ---
-# Phase boundaries are where we EXPECT the detectors to fire.
-PHASE1_GENRES = ["acoustic", "classical", "folk"]        # calm, acoustic, low energy
-PHASE2_GENRES = ["edm", "electronic", "techno"]          # high energy, low acousticness
-PHASE3_GENRES = ["hip-hop", "rap", "trap"]               # vocal-heavy, high speechiness
+# Phase boundaries are where we EXPECT the detectors to fire. Genres are chosen
+# to be acoustically COHERENT within a phase but DISTINCT across phases, so drift
+# is clean and dramatic. ~8 genres per phase (~1000 tracks each) => balanced
+# ~8000-track phases. Genre names not present are skipped automatically.
+PHASE1_GENRES = ["acoustic", "classical", "folk", "piano"]   # calm, acoustic
+PHASE2_GENRES = ["edm", "techno", "house", "trance"]   # high energy, electronic
+PHASE3_GENRES = ["hip-hop", "r-n-b", "reggaeton", "dancehall"]  # vocal, rhythmic
 
 POPULARITY_THRESHOLD = 60     # popularity >= 60 -> "popular" (label 1)
 SHUFFLE_SEED = 42             # reproducible within-phase shuffles
@@ -48,6 +51,15 @@ def build_ordered_dataset() -> pd.DataFrame:
         phase_map[g] = 3
 
     # Keep only the genres we care about, and attach their phase number.
+    available = set(df["track_genre"].unique())
+    requested = set(phase_map)
+    missing = sorted(requested - available)
+    if missing:
+        print(f"[genre_ordering] NOTE: these requested genres are not in the "
+              f"dataset and were skipped: {missing}")
+    used = sorted(requested & available)
+    print(f"[genre_ordering] using {len(used)} genres: {used}")
+
     df = df[df["track_genre"].isin(phase_map)].copy()
     df["genre_phase"] = df["track_genre"].map(phase_map)
 

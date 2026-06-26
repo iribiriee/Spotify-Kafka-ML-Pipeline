@@ -20,6 +20,7 @@ from __future__ import annotations
 import os
 import sys
 import threading
+import time
 from collections import deque
 from pathlib import Path
 
@@ -41,8 +42,9 @@ PORT = int(os.getenv("DASHBOARD_PORT", "5000"))
 ACC_WINDOW = 200          # rolling accuracy window
 FEATURE = "acousticness"  # feature shown in the distribution-shift panel
 FEATURE_WINDOW = 300      # live window size for that feature
-ACC_SERIES_MAX = 400      # how many (row, accuracy) points to keep for the chart
-ALERTS_MAX = 100          # recent alerts kept for the log panel
+ACC_SERIES_MAX = 2000     # plot points kept (every 25 msgs => covers ~50k tracks)
+ALERTS_MAX = 60           # rich alert records for the LOG panel (recent, scrollable)
+ALERT_ROWS_MAX = 5000     # alert row positions for CHART markers (just integers)
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -60,7 +62,11 @@ class DashboardState:
         self.acc_series = deque(maxlen=ACC_SERIES_MAX)      # (row, accuracy%)
         self.feature_window = deque(maxlen=FEATURE_WINDOW)
         self.alerts = deque(maxlen=ALERTS_MAX)
+        self.alert_rows_all = deque(maxlen=ALERT_ROWS_MAX)  # for chart markers
         self.alert_count = 0
+        self.last_pred_time = 0.0   # wall-clock of most recent prediction
+        self.model_version = 1      # bumps when a retrain event arrives
+        self.retrain_rows = []      # stream rows where retraining happened
         # phase-1 reference for the chosen feature (histogram baseline)
         self.reference = self._load_reference()
 
@@ -74,6 +80,7 @@ class DashboardState:
             self.processed += 1
             self.current_row = p.row_index
             self.current_phase = p.genre_phase
+            self.last_pred_time = time.time()
             self.correct_window.append(1 if p.correct else 0)
             if FEATURE in p.features:
                 self.feature_window.append(float(p.features[FEATURE]))
@@ -84,7 +91,22 @@ class DashboardState:
 
     def on_alert(self, a: DriftAlert) -> None:
         with self.lock:
+            if a.detector == "retrain":
+                # statistic carries the new version number.
+                if a.statistic:
+                    self.model_version = int(a.statistic)
+                self.retrain_rows.append(a.row_index)
+                self.alerts.append({
+                    "detector": "retrain",
+                    "row_index": a.row_index,
+                    "phase": a.genre_phase,
+                    "feature": None,
+                    "statistic": None,
+                    "description": a.description,
+                })
+                return
             self.alert_count += 1
+            self.alert_rows_all.append(a.row_index)
             self.alerts.append({
                 "detector": a.detector,
                 "row_index": a.row_index,
@@ -106,11 +128,22 @@ class DashboardState:
             else:
                 ks_stat = None
             # Alert row positions for the accuracy chart markers.
-            alert_rows = [a["row_index"] for a in self.alerts]
+            alert_rows = list(self.alert_rows_all)
+            # Status from staleness: nothing yet = idle; recent message = ongoing;
+            # messages seen but quiet for a while = finished.
+            if self.processed == 0:
+                status = "idle"
+            elif time.time() - self.last_pred_time < 5.0:
+                status = "ongoing"
+            else:
+                status = "finished"
             return {
                 "processed": self.processed,
                 "current_row": self.current_row,
                 "current_phase": self.current_phase,
+                "status": status,
+                "model_version": self.model_version,
+                "retrain_rows": list(self.retrain_rows),
                 "accuracy": round(acc, 1),
                 "alert_count": self.alert_count,
                 "acc_series": list(self.acc_series),

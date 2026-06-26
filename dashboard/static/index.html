@@ -52,6 +52,11 @@
   .log td{ color:var(--ink); padding:5px 8px; border-bottom:1px solid rgba(165,42,42,.2); }
   .log .det{ font-family:var(--font-head); color:var(--accent); text-transform:uppercase; font-size:12px; }
   .empty{ color:var(--ink); font-size:13px; padding:12px 4px; opacity:.7; }
+  .badge{ font-family:var(--font-head); text-transform:uppercase; letter-spacing:.03em;
+          font-size:12px; padding:3px 10px; border-radius:3px; border:1px solid var(--accent); }
+  .badge.ongoing{ background:var(--accent); color:var(--bg); }
+  .badge.finished{ background:var(--bg); color:var(--accent); }
+  .badge.idle{ background:var(--bg); color:var(--ink); border-color:var(--ink); opacity:.7; }
 </style>
 </head>
 <body>
@@ -61,7 +66,7 @@
       <h1>Drift Monitor</h1>
       <div class="subtitle" id="model-line">Spotify Popularity</div>
     </div>
-    <div class="status"><span class="dot"></span><span id="status">Connecting&hellip;</span></div>
+    <div class="status"><span class="badge idle" id="status-badge">Idle</span><span class="dot"></span><span id="status">Connecting&hellip;</span></div>
   </header>
 
   <div class="cards">
@@ -134,13 +139,22 @@
       x: xs, y: ys, mode: 'lines', name: 'accuracy',
       line: { color: INK, width: 2 }, hovertemplate: 'row %{x}<br>%{y}%<extra></extra>'
     }];
-    // Vertical brown markers at each alert row.
+    // Vertical brown dashed markers at each drift alert row.
     const shapes = (state.alert_rows || []).map(r => ({
       type: 'line', x0: r, x1: r, yref: 'paper', y0: 0, y1: 1,
       line: { color: ACCENT, width: 1, dash: 'dash' }
     }));
+    // Solid, thicker brown lines mark retrains (a deliberate action, not an alert).
+    (state.retrain_rows || []).forEach(r => {
+      shapes.push({ type: 'line', x0: r, x1: r, yref: 'paper', y0: 0, y1: 1,
+        line: { color: ACCENT, width: 2.5 } });
+    });
+    const annotations = (state.retrain_rows || []).map(r => ({
+      x: r, yref: 'paper', y: 1, text: 'retrain', showarrow: false,
+      font: { family: FONT, color: ACCENT, size: 11 }, yshift: 8
+    }));
     const layout = baseLayout({
-      shapes,
+      shapes, annotations,
       xaxis: { title: 'stream row', gridcolor: 'rgba(165,42,42,.15)', zeroline: false },
       yaxis: { title: 'accuracy %', range: [0, 100], gridcolor: 'rgba(165,42,42,.15)', zeroline: false },
     });
@@ -193,7 +207,14 @@
     document.getElementById('m-proc').textContent = state.processed.toLocaleString();
     document.getElementById('m-phase').textContent = state.current_phase || '—';
     document.getElementById('m-alerts').textContent = state.alert_count.toLocaleString();
-    document.getElementById('status').textContent = 'Live · row ' + state.current_row.toLocaleString();
+    document.getElementById('status').textContent = 'Row ' + state.current_row.toLocaleString();
+    document.getElementById('model-line').textContent =
+      'Spotify Popularity · Model v' + (state.model_version || 1);
+    const badge = document.getElementById('status-badge');
+    const st = state.status || 'idle';
+    const labels = { idle: 'Idle', ongoing: 'Ongoing', finished: 'Finished' };
+    badge.textContent = labels[st];
+    badge.className = 'badge ' + st;
   }
 
   async function tick(){

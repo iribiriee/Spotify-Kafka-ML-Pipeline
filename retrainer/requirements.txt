@@ -1,0 +1,6 @@
+confluent-kafka~=2.14
+scikit-learn~=1.5
+imbalanced-learn~=0.13
+joblib~=1.4
+pandas~=2.2
+numpy~=1.26

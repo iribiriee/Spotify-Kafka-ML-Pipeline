@@ -36,6 +36,11 @@ TOPIC_IN = os.getenv("TOPIC_RAW_TRACKS", "raw-tracks")
 TOPIC_OUT = os.getenv("TOPIC_PREDICTIONS", "predictions")
 RELOAD_CHECK_EVERY = int(os.getenv("INFERENCE_RELOAD_CHECK_EVERY", "100"))
 
+# Rolling buffer of recently processed labeled tracks, for the retrainer.
+BUFFER_DIR = REPO_ROOT / "data" / "buffer"
+BUFFER_PATH = BUFFER_DIR / "recent_tracks.csv"
+BUFFER_MAX_ROWS = int(os.getenv("BUFFER_MAX_ROWS", "2000"))
+
 
 class InferenceService:
     def __init__(self):
@@ -50,6 +55,30 @@ class InferenceService:
         })
         self.producer = Producer({"bootstrap.servers": BOOTSTRAP})
         self.seen = 0
+        self._init_buffer()
+
+    def _init_buffer(self) -> None:
+        """Create the buffer file with a header (features + label + row_index)."""
+        BUFFER_DIR.mkdir(parents=True, exist_ok=True)
+        if not BUFFER_PATH.exists():
+            header = ",".join(FEATURE_NAMES + ["label", "row_index", "genre_phase"])
+            BUFFER_PATH.write_text(header + "\n")
+
+    def append_buffer(self, track: RawTrack) -> None:
+        """Append one labeled track; periodically trim to the last N rows."""
+        vals = [str(track.features[n]) for n in FEATURE_NAMES]
+        vals += [str(track.label), str(track.row_index), str(track.genre_phase)]
+        with open(BUFFER_PATH, "a") as f:
+            f.write(",".join(vals) + "\n")
+        # Trim occasionally so the file doesn't grow unbounded.
+        if self.seen % 500 == 0:
+            self._trim_buffer()
+
+    def _trim_buffer(self) -> None:
+        lines = BUFFER_PATH.read_text().splitlines()
+        if len(lines) > BUFFER_MAX_ROWS + 1:   # +1 for header
+            header, body = lines[0], lines[-BUFFER_MAX_ROWS:]
+            BUFFER_PATH.write_text(header + "\n" + "\n".join(body) + "\n")
 
     def maybe_reload(self) -> None:
         """Swap to a newer model version if one has been published."""
@@ -93,6 +122,7 @@ class InferenceService:
 
                 track = RawTrack.from_json(msg.value())
                 prediction = self.predict(track)
+                self.append_buffer(track)
                 self.producer.produce(
                     topic=TOPIC_OUT,
                     key=prediction.track_id,
