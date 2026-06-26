@@ -73,6 +73,7 @@ class InferenceService:
             label=track.label,          # echo ground truth for the drift monitor
             prediction=pred,
             probability=round(proba, 4),
+            features=track.features,    # carry inputs forward for the KS drift test
         )
 
     def run(self) -> None:

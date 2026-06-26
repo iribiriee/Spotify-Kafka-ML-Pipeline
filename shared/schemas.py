@@ -75,6 +75,7 @@ class Prediction:
     label: int              # echoed ground truth
     prediction: int         # model's predicted class (0/1)
     probability: float      # model's confidence for class 1
+    features: dict = field(default_factory=dict)  # echoed inputs, for KS drift test
     timestamp: float = field(default_factory=time.time)
 
     @property
