@@ -1,0 +1,7 @@
+artifact_location: /mnt/c/Users/iribiriee/Documents/GitHub/Spotify-Kafka-ML-Pipeline/python
+  retrainer/train_model.py/568141739900848275
+creation_time: 1782521580278
+experiment_id: '568141739900848275'
+last_update_time: 1782521580278
+lifecycle_stage: active
+name: spotify-popularity-drift

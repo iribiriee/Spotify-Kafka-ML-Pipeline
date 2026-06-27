@@ -11,14 +11,16 @@ venv/
 # --- Generated data (recreate by running data/genre_ordering.py) -------------
 data/dataset.csv
 data/genre_ordered_tracks.csv
+data/buffer/
 
-# --- Generated model artifacts (recreate by running the training notebook) ---
-models/*.joblib
-models/training_metadata.json
+# --- Generated model artifacts (recreate by running retrainer/train_model.py)-
+models/
+# (model_v*.joblib, scaler_v*.joblib, metadata_v*.json, current.txt)
 
-# --- MLflow local tracking store ---------------------------------------------
+# --- MLflow local tracking store (the container uses a Docker volume) ---------
 mlruns/
 mlflow.db
+mlartifacts/
 
 # --- OS / editor cruft -------------------------------------------------------
 .DS_Store
