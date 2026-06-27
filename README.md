@@ -28,13 +28,15 @@ stream shifts into unfamiliar genres. The system catches this and self-heals.
 **Result (single run):** accuracy holds ~95% through Phase 1, drops at each genre
 boundary, and recovers after each automatic retrain:
 
-- Phase 2: dropped to ~68% → retrained → recovered to ~78–82%
-- Phase 3: dropped to ~56% → retrained → recovered to ~70–74%
+- Phase 2: dropped to ~68% → retrained → recovered to ~78–80%
+- Phase 3: dropped to ~52% → retrained → recovered to ~72–75%
 
 Recovery is strong but bounded — popularity is intrinsically hard to predict from
 audio features alone, so a retrained model adapts to the new genre without
 reaching Phase 1's peak. This is realistic continuous-training behaviour, not a
 demo that overfits.
+
+![Dashboard: rolling accuracy with drift markers and retrain events](docs/dashboard.png)
 
 ---
 
@@ -104,6 +106,11 @@ the expensive retrain to genuine performance loss.
 ## Quick start
 
 ```bash
+# 0. Activate the virtual environment (first time: create it and install deps)
+python -m venv .venv          # first time only
+source .venv/bin/activate     # Windows: .venv\Scripts\activate
+pip install -r requirements.txt   # first time only
+
 # 1. Generate the genre-ordered dataset (auto-downloads the source CSV)
 python data/genre_ordering.py
 
@@ -114,14 +121,14 @@ python retrainer/train_model.py
 docker compose up --build
 ```
 
+Or simply run **`bash reset.sh`**, which does a full clean run (activate venv →
+wipe → start MLflow → train baseline → bring up the stack) in one command.
+
 Then open:
 
 - **Dashboard** — http://localhost:5000 (live accuracy, drift, distribution shift, alerts log)
 - **MLflow** — http://localhost:5001 (metrics per model version)
 - **Kafka UI** — http://localhost:8080 (topics and messages)
-
-A `reset.sh` script does a full clean run (wipe + retrain baseline + up) in one
-command.
 
 ---
 
