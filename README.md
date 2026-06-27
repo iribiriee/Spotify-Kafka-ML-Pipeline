@@ -61,7 +61,7 @@ demo that overfits.
 ### Live demo
 
 *Watch drift get detected and the model retrain & hot-reload live:*
-**[retraining demo](https://github.com/user-attachments/assets/36b9845c-17df-48e7-b8a8-02e5bda23039)**
+**[retraining demo](https://github.com/user-attachments/assets/ee94c5f8-40f4-417e-ab82-6aa039e3c0ed)**
 
 ---
 
