@@ -25,11 +25,11 @@ something real to detect and recover from:
 A model trained only on Phase 1 predicts well at first, then degrades as the
 stream shifts into unfamiliar genres. The system catches this and self-heals.
 
-**Result (single run):** accuracy holds ~95% through Phase 1, drops at each genre
+**Result (single run):** accuracy holds ~96% through Phase 1, drops at each genre
 boundary, and recovers after each automatic retrain:
 
-- Phase 2: dropped to ~68% → retrained → recovered to ~78–80%
-- Phase 3: dropped to ~56% → retrained → recovered to ~70–74%
+- Phase 2: dropped to ~68% → retrained → recovered to ~80–83%
+- Phase 3: dropped to ~52% → retrained → recovered to ~72–75%
 
 Tracked in MLflow, the retraining is visible in the metrics. Comparing the two
 retrained models on the minority ("popular") class:
