@@ -156,6 +156,23 @@ services:
       - ./data:/app/data:ro      # phase-1 reference CSV
 
   # ---------------------------------------------------------------------------
+  # mlflow — experiment tracking server + UI at http://localhost:5001
+  # SQLite backend for metadata, mounted volume for artifacts (local demo setup).
+  # ---------------------------------------------------------------------------
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.17.2
+    container_name: mlflow
+    ports:
+      - "5001:5000"
+    command: >
+      mlflow server
+      --host 0.0.0.0 --port 5000
+      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --default-artifact-root /mlflow/artifacts
+    volumes:
+      - mlflow-data:/mlflow
+
+  # ---------------------------------------------------------------------------
   # retrainer — closes the loop: hears ADWIN drift, retrains, publishes new model.
   # ---------------------------------------------------------------------------
   retrainer:
@@ -172,9 +189,11 @@ services:
       KAFKA_BOOTSTRAP_HOST: "${KAFKA_BOOTSTRAP_INTERNAL}"
       RETRAIN_DELAY_ROWS: "${RETRAIN_DELAY_ROWS:-500}"
       RETRAIN_COOLDOWN_ROWS: "${RETRAIN_COOLDOWN_ROWS:-1500}"
+      MLFLOW_TRACKING_URI: "http://mlflow:5000"
     volumes:
       - ./data:/app/data           # read the buffer (read-write so it can read it)
       - ./models:/app/models       # write new model versions
 
 volumes:
   kafka-data:
+  mlflow-data:

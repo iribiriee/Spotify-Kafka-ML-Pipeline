@@ -19,6 +19,7 @@ Pipeline (and the reasoning, inline):
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -113,9 +114,36 @@ def train_and_publish(df: pd.DataFrame,
     version = reg.publish_new_version(model, scaler, metadata)
     metadata["version"] = version
 
+    _log_to_mlflow(metadata, n_estimators, smote_applied)
+
     print(f"[train] published model v{version} from '{source_label}'")
     print(f"[train] metrics: {metrics}")
     return metadata
+
+
+def _log_to_mlflow(metadata: dict, n_estimators: int, smote_applied: bool) -> None:
+    """Log this run to MLflow if a tracking server is configured. Never fatal:
+    if MLflow is unreachable (e.g. training on the host before Docker is up),
+    training still succeeds — we just skip logging."""
+    uri = os.getenv("MLFLOW_TRACKING_URI")
+    if not uri:
+        return
+    try:
+        import mlflow
+        mlflow.set_tracking_uri(uri)
+        mlflow.set_experiment("spotify-popularity-drift")
+        with mlflow.start_run(run_name=metadata["source"]):
+            mlflow.log_param("source", metadata["source"])
+            mlflow.log_param("n_estimators", n_estimators)
+            mlflow.log_param("smote_applied", smote_applied)
+            mlflow.log_param("n_train_rows", metadata["n_train_rows"])
+            mlflow.log_param("model_version", metadata["version"])
+            for k, v in metadata["metrics"].items():
+                if isinstance(v, (int, float)):
+                    mlflow.log_metric(k, v)
+        print(f"[train] logged run to MLflow at {uri}")
+    except Exception as exc:  # noqa: BLE001
+        print(f"[train] MLflow logging skipped ({exc})", file=sys.stderr)
 
 
 def load_phase1_baseline_df() -> pd.DataFrame:
